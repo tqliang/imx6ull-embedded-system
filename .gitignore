@@ -1,0 +1,69 @@
+# ============================================================
+# i.MX6ULL 智能终端系统 .gitignore
+# ============================================================
+
+# --- 编译产物 ---
+*/build/
+build/
+*.o
+*.obj
+
+# Qt MOC 生成文件
+moc_*.cpp
+moc_*.h
+moc_predefs.h
+ui_*.h
+qrc_*.cpp
+
+# Qt 生成文件
+.qmake.stash
+Makefile
+*.pro.user
+
+# --- 可执行文件（仅在 build/ 子目录下） ---
+*/build/mainpage
+*/build/camera
+*/build/audio
+*/build/spaceship
+*/build/filemanager
+*/build/terminal
+*/build/network
+
+# --- IDE / 编辑器 ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- 编译缓存 ---
+*.cache
+compile_commands.json
+
+# --- 内核 / 设备树编译产物 ---
+*.dtb
+*.dtbo
+vmlinux
+vmlinux.o
+Image
+zImage
+uImage
+modules.order
+Module.symvers
+*.mod.c
+*.ko
+*.mod.o
+
+# --- 打包文件 ---
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.zip
+*.img
+*.sdcard
+
+# --- 日志文件 ---
+*.log
