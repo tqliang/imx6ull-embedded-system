@@ -15,7 +15,7 @@
 
 NetworkManager *NetworkManager::s_instance = nullptr;
 
-NetworkManager *NetworkManager::instance()
+NetworkManager *NetworkManager::instance()//获取单例实例
 {
     if (!s_instance)
         s_instance = new NetworkManager;
@@ -25,14 +25,14 @@ NetworkManager *NetworkManager::instance()
 NetworkManager::NetworkManager(QObject *parent)
     : QObject(parent)
 {
-    m_worker = new NetworkWorker;
-    m_worker->moveToThread(&m_workerThread);
+    m_worker = new NetworkWorker;//创建工作线程对象
+    m_worker->moveToThread(&m_workerThread);//将线程移动到新线程
 
-    connect(&m_workerThread, &QThread::finished, m_worker, &QObject::deleteLater);
-    connect(m_worker, &NetworkWorker::connected,    this, &NetworkManager::connected);
-    connect(m_worker, &NetworkWorker::disconnected, this, &NetworkManager::disconnected);
-    connect(m_worker, &NetworkWorker::remoteCommand, this, &NetworkManager::remoteCommand);
-    connect(m_worker, &NetworkWorker::statusMessage, this, &NetworkManager::statusMessage);
+    connect(&m_workerThread, &QThread::finished, m_worker, &QObject::deleteLater);//线程结束时删除线程对象
+    connect(m_worker, &NetworkWorker::connected,    this, &NetworkManager::connected);//连接信号和槽函数
+    connect(m_worker, &NetworkWorker::disconnected, this, &NetworkManager::disconnected);//连接信号和槽函数
+    connect(m_worker, &NetworkWorker::remoteCommand, this, &NetworkManager::remoteCommand);//连接信号和槽函数
+    connect(m_worker, &NetworkWorker::statusMessage, this, &NetworkManager::statusMessage);//连接信号和槽函数
 
     m_workerThread.start();
 }
@@ -42,39 +42,39 @@ void NetworkManager::start()
     SettingsManager *s = SettingsManager::instance();
     QMetaObject::invokeMethod(m_worker, "connectToMqtt",
         Qt::QueuedConnection, Q_ARG(QString, s->mqttHost()),
-        Q_ARG(int, s->mqttPort()));
+        Q_ARG(int, s->mqttPort()));//使用队列连接方式调用工作线程的connectToMqtt函数，传递MQTT主机和端口参数
     QMetaObject::invokeMethod(m_worker, "startHttpServer",
-        Qt::QueuedConnection, Q_ARG(int, httpPort()));
+        Qt::QueuedConnection, Q_ARG(int, httpPort()));//使用队列连接方式调用工作线程的startHttpServer函数，传递HTTP端口参数
 }
 
 void NetworkManager::stop()
 {
-    QMetaObject::invokeMethod(m_worker, "stop", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(m_worker, "stop", Qt::QueuedConnection);//使用队列连接方式调用工作线程的stop函数
     m_workerThread.quit();
     m_workerThread.wait();
 }
 
-void NetworkManager::publishStatus(const QJsonObject &status)
+void NetworkManager::publishStatus(const QJsonObject &status)//发布状态
 {
     QMetaObject::invokeMethod(m_worker, "publishStatus",
         Qt::QueuedConnection, Q_ARG(QJsonObject, status));
 }
 
-void NetworkManager::startStream()
+void NetworkManager::startStream()//启动流
 {
     QMetaObject::invokeMethod(m_worker, "startStream", Qt::QueuedConnection);
 }
 
-void NetworkManager::stopStream()
+void NetworkManager::stopStream()//停止流
 {
     QMetaObject::invokeMethod(m_worker, "stopStream", Qt::BlockingQueuedConnection);
 }
 
-bool NetworkManager::isStreaming() const
+bool NetworkManager::isStreaming() const//检查是否正在流
 {
     bool result = false;
     QMetaObject::invokeMethod(m_worker, "isStreaming", Qt::BlockingQueuedConnection,
-        Q_RETURN_ARG(bool, result));
+        Q_RETURN_ARG(bool, result));//使用阻塞队列连接方式调用工作线程的isStreaming函数，返回流状态
     return result;
 }
 
@@ -84,44 +84,45 @@ void NetworkManager::setAppRunning(bool running)
         Q_ARG(bool, running));
 }
 
-NetworkWorker::NetworkWorker(QObject *parent)
+NetworkWorker::NetworkWorker(QObject *parent)//构造函数
     : QObject(parent), m_mqttSocket(nullptr), m_httpServer(nullptr),
       m_port(1883), m_connected(false),
       m_cameraFd(-1), m_cameraBuffers(nullptr), m_cameraBufCount(0),
       m_pixelFormat(0), m_streamWidth(0), m_streamHeight(0), m_streaming(false),
       m_appRunning(false)
 {
-    m_reconnectTimer = new QTimer(this);
-    m_reconnectTimer->setInterval(5000);
-    connect(m_reconnectTimer, &QTimer::timeout, this, &NetworkWorker::onReconnectTimer);
+    m_reconnectTimer = new QTimer(this);//创建重连定时器
+    m_reconnectTimer->setInterval(5000);//设置重连定时器间隔为5秒
+    connect(m_reconnectTimer, &QTimer::timeout, this, &NetworkWorker::onReconnectTimer);//连接重连定时器的超时信号到onReconnectTimer槽函数
 
-    m_pingTimer = new QTimer(this);
-    m_pingTimer->setInterval(30000);
-    connect(m_pingTimer, &QTimer::timeout, this, [this]() {
-        if (m_connected && m_mqttSocket) {
-            QByteArray ping = buildMqttPacket(0xC0, QByteArray());
-            m_mqttSocket->write(ping);
+    m_pingTimer = new QTimer(this);//创建Ping定时器
+    m_pingTimer->setInterval(30000);//设置Ping定时器间隔为30秒
+    connect(m_pingTimer, &QTimer::timeout, this, [this]() {//连接Ping定时器的超时信号到lambda函数
+        if (m_connected && m_mqttSocket) 
+        {
+            QByteArray ping = buildMqttPacket(0xC0, QByteArray());//构建PINGREQ报文
+            m_mqttSocket->write(ping);//发送PINGREQ报文
             m_mqttSocket->flush();
         }
     });
 
     m_streamTimer = new QTimer(this);
-    m_streamTimer->setInterval(66);
-    connect(m_streamTimer, &QTimer::timeout, this, &NetworkWorker::onStreamTimer);
+    m_streamTimer->setInterval(66);//设置流定时器间隔为66毫秒
+    connect(m_streamTimer, &QTimer::timeout, this, &NetworkWorker::onStreamTimer);//连接流定时器的超时信号到onStreamTimer槽函数
 }
 
 void NetworkWorker::connectToMqtt(const QString &host, int port)
 {
-    m_host = host;
-    m_port = port;
+    m_host = host;//设置MQTT主机
+    m_port = port;//设置MQTT端口
 
-    m_mqttSocket = new QTcpSocket(this);
+    m_mqttSocket = new QTcpSocket(this);//创建MQTT套接字，真正的连接将在后续步骤中进行
     connect(m_mqttSocket, &QTcpSocket::connected,
-            this, &NetworkWorker::onMqttConnected);
+            this, &NetworkWorker::onMqttConnected);//连接MQTT套接字的已连接信号到onMqttConnected槽函数
     connect(m_mqttSocket, &QTcpSocket::disconnected,
-            this, &NetworkWorker::onMqttDisconnected);
+            this, &NetworkWorker::onMqttDisconnected);//连接MQTT套接字的已断开信号到onMqttDisconnected槽函数
     connect(m_mqttSocket, &QTcpSocket::readyRead,
-            this, &NetworkWorker::onMqttReadyRead);
+            this, &NetworkWorker::onMqttReadyRead);//连接MQTT套接字的可读信号到onMqttReadyRead槽函数
 
     qDebug() << "MQTT: 正在连接" << host << ":" << port;
     m_mqttSocket->connectToHost(host, port);
@@ -130,22 +131,23 @@ void NetworkWorker::connectToMqtt(const QString &host, int port)
 void NetworkWorker::onMqttConnected()
 {
     qDebug() << "MQTT: TCP 已连接，发送 CONNECT 报文";
-    sendMqttConnect();
+    sendMqttConnect();//发送CONNECT报文
 }
 
 void NetworkWorker::onMqttDisconnected()
 {
     qDebug() << "MQTT: 连接已断开";
     m_connected = false;
-    m_pingTimer->stop();
+    m_pingTimer->stop();//停止Ping定时器
     emit disconnected();
-    emit statusMessage("MQTT 已断开，5秒后重连...");
-    m_reconnectTimer->start();
+    emit statusMessage("MQTT 已断开,5秒后重连...");
+    m_reconnectTimer->start();//启动重连定时器
 }
 
 void NetworkWorker::onReconnectTimer()
 {
-    if (!m_connected && m_mqttSocket) {
+    if (!m_connected && m_mqttSocket) 
+    {
         qDebug() << "MQTT: 尝试重连...";
         m_mqttSocket->connectToHost(m_host, m_port);
     }
@@ -154,64 +156,65 @@ void NetworkWorker::onReconnectTimer()
 QByteArray NetworkWorker::encodeRemainingLength(int length)
 {
     QByteArray encoded;
-    do {
-        unsigned char byte = length % 128;
-        length /= 128;
+    do 
+    {
+        unsigned char byte = length % 128;//计算剩余长度的低7位
+        length /= 128;//计算剩余长度的高7位
         if (length > 0)
-            byte |= 0x80;
-        encoded.append((char)byte);
+            byte |= 0x80;//设置最高位为1，表示还有更多字节
+        encoded.append((char)byte);//将字节添加到编码数组中
     } while (length > 0);
     return encoded;
 }
 
 QByteArray NetworkWorker::buildMqttPacket(unsigned char type, const QByteArray &payload)
 {
-    QByteArray pkt;
-    pkt.append((char)type);
-    pkt.append(encodeRemainingLength(payload.size()));
-    pkt.append(payload);
+    QByteArray pkt;//构建MQTT报文
+    pkt.append((char)type);//添加消息类型字节
+    pkt.append(encodeRemainingLength(payload.size()));//添加剩余长度字节
+    pkt.append(payload);//添加有效载荷
     return pkt;
 }
 
 void NetworkWorker::sendMqttConnect()
 {
     QByteArray variableHeader;
-    variableHeader.append((char)0x00).append((char)0x04).append("MQTT");
-    variableHeader.append((char)0x04);
-    variableHeader.append((char)0x02);
-    variableHeader.append((char)0x00).append((char)0x3C);
+    variableHeader.append((char)0x00).append((char)0x04).append("MQTT");//协议名长度+内容
+    variableHeader.append((char)0x04);//协议版本MQTT 3.1.1
+    variableHeader.append((char)0x02);//清除会话(Clean Session)
+    variableHeader.append((char)0x00).append((char)0x3C);//60秒心跳间隔
 
-    QByteArray clientId = SettingsManager::instance()->deviceName().toUtf8();
+    QByteArray clientId = SettingsManager::instance()->deviceName().toUtf8();//获取设备名称
     m_subscribeTopic = "imx6ull/" + SettingsManager::instance()->deviceName() + "/cmd";
 
-    QByteArray payload;
+    QByteArray payload;//构建有效载荷
     payload.append(variableHeader);
     payload.append((char)(clientId.size() >> 8));
     payload.append((char)(clientId.size() & 0xFF));
     payload.append(clientId);
 
-    QByteArray pkt = buildMqttPacket(0x10, payload);
+    QByteArray pkt = buildMqttPacket(0x10, payload);//构建CONNECT报文
 
-    m_mqttSocket->write(pkt);
+    m_mqttSocket->write(pkt);//发送CONNECT报文
     m_mqttSocket->flush();
 }
 
-void NetworkWorker::sendMqttSubscribe(const QString &topic)
+void NetworkWorker::sendMqttSubscribe(const QString &topic)//发送订阅请求
 {
-    QByteArray topicBytes = topic.toUtf8();
-    QByteArray payload;
-    payload.append((char)0x00).append((char)0x01);
+    QByteArray topicBytes = topic.toUtf8();//将主题转换为UTF-8字节数组
+    QByteArray payload;//构建有效载荷
+    payload.append((char)0x00).append((char)0x01);//   Packet ID: 0x00 0x01 (报文标识符)
     payload.append((char)(topicBytes.size() >> 8));
-    payload.append((char)(topicBytes.size() & 0xFF));
-    payload.append(topicBytes);
-    payload.append((char)0x00);
+    payload.append((char)(topicBytes.size() & 0xFF));//主题长度
+    payload.append(topicBytes);//主题内容
+    payload.append((char)0x00);//QoS等级
 
     QByteArray pkt = buildMqttPacket(0x82, payload);
 
     m_mqttSocket->write(pkt);
 }
 
-void NetworkWorker::sendMqttPublish(const QString &topic, const QByteArray &payload)
+void NetworkWorker::sendMqttPublish(const QString &topic, const QByteArray &payload)//发送发布消息
 {
     QByteArray topicBytes = topic.toUtf8();
     QByteArray pktPayload;
@@ -226,18 +229,18 @@ void NetworkWorker::sendMqttPublish(const QString &topic, const QByteArray &payl
     m_mqttSocket->flush();
 }
 
-void NetworkWorker::onMqttReadyRead()
+void NetworkWorker::onMqttReadyRead()//处理MQTT套接字的可读信号
 {
-    QByteArray data = m_mqttSocket->readAll();
+    QByteArray data = m_mqttSocket->readAll();//读取所有数据
     if (data.size() < 2) return;
 
-    unsigned char type = data[0] & 0xF0;
+    unsigned char type = data[0] & 0xF0;//获取消息类型
 
     if (type == 0x20) 
     {
         if (data.size() >= 4) 
         {
-            unsigned char returnCode = data[3];
+            unsigned char returnCode = data[3];//获取返回码
             if (returnCode == 0x00) 
             {
                 qDebug() << "MQTT: CONNACK 连接成功";
@@ -249,7 +252,9 @@ void NetworkWorker::onMqttReadyRead()
 
                 emit connected();
                 emit statusMessage("MQTT 已连接");
-            } else {
+            } 
+            else 
+            {
                 qWarning() << "MQTT: CONNACK 连接被拒绝，返回码=" << returnCode;
                 m_mqttSocket->disconnectFromHost();
             }
@@ -268,63 +273,66 @@ void NetworkWorker::onMqttReadyRead()
         return;
     }
 
-    if (type == 0x30) 
+    if (type == 0x30) //处理PUBLISH消息
     {
         int pos = 1;
-        int remaining = 0;
-        int multiplier = 1;
+        int remaining = 0;//剩余长度
+        int multiplier = 1;//乘数，用于计算剩余长度
         do {
-            if (pos >= data.size()) return;
-            unsigned char byte = data[pos++];
-            remaining += (byte & 0x7F) * multiplier;
+            if (pos >= data.size()) return;//检查是否超出数据范围
+            unsigned char byte = data[pos++];//获取当前字节
+            remaining += (byte & 0x7F) * multiplier;//计算剩余长度
             multiplier *= 128;
-            if ((byte & 0x80) == 0)
+            if ((byte & 0x80) == 0)//如果最高位为0，表示这是最后一个字节
                 break;
-        } while (true);
+        } while (true);//计算剩余长度
 
-        int topicLen = (data[pos] << 8) | data[pos + 1];
-        pos += 2;
-        QString topic = QString::fromUtf8(data.mid(pos, topicLen));
-        pos += topicLen;
+        int topicLen = (data[pos] << 8) | data[pos + 1];//获取主题长度
+        pos += 2;//跳过主题长度字节
+        QString topic = QString::fromUtf8(data.mid(pos, topicLen));//获取主题字符串
+        pos += topicLen;//跳过主题字节
 
-        QByteArray payload = data.mid(pos, remaining - 2 - topicLen);
+        QByteArray payload = data.mid(pos, remaining - 2 - topicLen);//获取有效载荷
         QJsonObject cmd = QJsonDocument::fromJson(payload).object();
 
         qDebug() << "MQTT: 收到命令 topic=" << topic;
-        emit remoteCommand(topic, cmd);
+        emit remoteCommand(topic, cmd);//发送远程命令信号
     }
 }
 
-void NetworkWorker::publishStatus(const QJsonObject &status)
+void NetworkWorker::publishStatus(const QJsonObject &status)//发布状态消息
 {
     if (!m_connected) return;
 
-    QByteArray payload = QJsonDocument(status).toJson(QJsonDocument::Compact);
-    QString topic = "imx6ull/" + SettingsManager::instance()->deviceName() + "/status";
-    sendMqttPublish(topic, payload);
+    QByteArray payload = QJsonDocument(status).toJson(QJsonDocument::Compact);//将状态对象转换为JSON字节数组
+    QString topic = "imx6ull/" + SettingsManager::instance()->deviceName() + "/status";//构建主题
+    sendMqttPublish(topic, payload);//发送发布消息
 }
 
 void NetworkWorker::startHttpServer(int port)
 {
-    m_httpServer = new QTcpServer(this);
+    m_httpServer = new QTcpServer(this);//创建HTTP服务器
     connect(m_httpServer, &QTcpServer::newConnection,
-            this, &NetworkWorker::onNewHttpConnection);
+            this, &NetworkWorker::onNewHttpConnection);//连接新连接信号到槽函数
 
-    if (m_httpServer->listen(QHostAddress::Any, port)) {
+    if (m_httpServer->listen(QHostAddress::Any, port)) //监听HTTP服务器
+    {
         qDebug() << "HTTP: 服务已启动，端口" << port;
         emit statusMessage(QString("HTTP 服务已启动，端口 %1").arg(port));
-    } else {
+    } 
+    else 
+    {
         qWarning() << "HTTP: 启动失败" << m_httpServer->errorString();
     }
 }
 
-void NetworkWorker::onNewHttpConnection()
+void NetworkWorker::onNewHttpConnection()//处理新HTTP连接
 {
-    while (m_httpServer->hasPendingConnections()) {
-        QTcpSocket *client = m_httpServer->nextPendingConnection();
-        m_httpClients.append(client);
-        connect(client, &QTcpSocket::readyRead,
-                this, &NetworkWorker::onHttpReadyRead);
+    while (m_httpServer->hasPendingConnections()) //处理所有待连接
+    {
+        QTcpSocket *client = m_httpServer->nextPendingConnection();//获取下一个待连接的客户端套接字
+        m_httpClients.append(client);//添加到客户端列表
+        connect(client, &QTcpSocket::readyRead,this, &NetworkWorker::onHttpReadyRead);
         connect(client, &QTcpSocket::disconnected, this, [this, client]() {
             m_httpClients.removeAll(client);
             client->deleteLater();
@@ -332,33 +340,33 @@ void NetworkWorker::onNewHttpConnection()
     }
 }
 
-void NetworkWorker::onHttpReadyRead()
+void NetworkWorker::onHttpReadyRead()//处理HTTP套接字的可读信号
 {
-    QTcpSocket *client = qobject_cast<QTcpSocket *>(sender());
+    QTcpSocket *client = qobject_cast<QTcpSocket *>(sender());//获取发送信号的套接字对象
     if (!client) return;
 
     QByteArray data = client->readAll();
-    handleHttpRequest(client, data);
+    handleHttpRequest(client, data);//处理HTTP请求
 }
 
-void NetworkWorker::handleHttpRequest(QTcpSocket *client, const QByteArray &data)
+void NetworkWorker::handleHttpRequest(QTcpSocket *client, const QByteArray &data)//处理HTTP请求
 {
-    QString request = QString::fromUtf8(data);
+    QString request = QString::fromUtf8(data);//将请求数据转换为字符串
 
     if (request.contains("GET /stream")) 
     {
-        m_streamClients.append(client);
+        m_streamClients.append(client);//添加到推流客户端列表
         connect(client, &QTcpSocket::disconnected, this, [this, client]() {
-            m_streamClients.removeAll(client);
+            m_streamClients.removeAll(client);//从客户端列表中移除
             if (m_streamClients.isEmpty())
             {
                 m_streamTimer->stop();
-                closeCamera();
+                closeCamera();//关闭摄像头
                 qDebug() << "STREAM: 所有客户端已断开，摄像头已关闭";
             }
         });
 
-        if (m_cameraFd < 0)
+        if (m_cameraFd < 0)//如果摄像头被占用，尝试打开摄像头
         {
             if (!openCamera())
             {
@@ -371,40 +379,40 @@ void NetworkWorker::handleHttpRequest(QTcpSocket *client, const QByteArray &data
             }
         }
 
-        if (!m_streamTimer->isActive())
+        if (!m_streamTimer->isActive())//如果定时器未激活，启动定时器
             m_streamTimer->start();
 
         QByteArray header = QString(
             "HTTP/1.1 200 OK\r\n"
-            "Content-Type: multipart/x-mixed-replace; boundary=mjpegframe\r\n"
-            "Connection: close\r\n"
-            "Cache-Control: no-cache\r\n"
+            "Content-Type: multipart/x-mixed-replace; boundary=mjpegframe\r\n"//设置内容类型为MIME混合替换，边界为mjpegframe
+            "Connection: close\r\n"//关闭连接
+            "Cache-Control: no-cache\r\n"//禁用缓存
             "\r\n").toUtf8();
-        client->write(header);
+        client->write(header);//发送HTTP头
         client->flush();
         qDebug() << "STREAM: 客户端已连接，开始推流";
         return;
     }
 
-    if (request.contains("GET /api/status")) 
+    if (request.contains("GET /api/status")) //处理状态请求
     {
         QJsonObject status;
         status["device"] = SettingsManager::instance()->deviceName();
-        status["brightness"] = SettingsManager::instance()->brightness();
+        status["brightness"] = SettingsManager::instance()->brightness();//获取亮度设置
 
-        QFile tempFile("/sys/class/thermal/thermal_zone0/temp");
+        QFile tempFile("/sys/class/thermal/thermal_zone0/temp");//读取CPU温度文件
         if (tempFile.open(QIODevice::ReadOnly))
         {
             int temp = tempFile.readAll().trimmed().toInt() / 1000;
             status["cpuTemp"] = temp;
         }
-        status["streaming"] = m_streaming;
-        status["appRunning"] = m_appRunning;
+        status["streaming"] = m_streaming;//获取流状态
+        status["appRunning"] = m_appRunning;//获取应用运行状态
 
         QByteArray json = QJsonDocument(status).toJson();
         client->write(buildHttpResponse(QString::fromUtf8(json), "application/json"));
     } 
-    else if (request.contains("GET /api/brightness/up")) 
+    else if (request.contains("GET /api/brightness/up")) //处理亮度增加请求
     {
         int v = SettingsManager::instance()->brightness() + 1;
         if (v <= 7) 
@@ -414,7 +422,7 @@ void NetworkWorker::handleHttpRequest(QTcpSocket *client, const QByteArray &data
         }
         client->write(buildHttpResponse("{\"ok\":true}", "application/json"));
     } 
-    else if (request.contains("GET /api/brightness/down")) 
+    else if (request.contains("GET /api/brightness/down")) //处理亮度减少请求
     {
         int v = SettingsManager::instance()->brightness() - 1;
         if (v >= 0) 
@@ -442,7 +450,7 @@ void NetworkWorker::handleHttpRequest(QTcpSocket *client, const QByteArray &data
     }
     else if (request.contains("GET /api/start_stream"))
     {
-        emit remoteCommand("start_stream", {});
+        emit remoteCommand("start_stream", {});//开始推流
         client->write(buildHttpResponse("{\"ok\":true}", "application/json"));
     }
     else if (request.contains("GET /api/stop_stream"))
@@ -450,13 +458,13 @@ void NetworkWorker::handleHttpRequest(QTcpSocket *client, const QByteArray &data
         emit remoteCommand("stop_stream", {});
         client->write(buildHttpResponse("{\"ok\":true}", "application/json"));
     }
-    else if (request.contains("GET /api/app/launch"))
+    else if (request.contains("GET /api/app/launch"))//处理应用启动请求
     {
         QString name = "camera";
-        int idx = request.indexOf("name=");
+        int idx = request.indexOf("name=");//获取应用名称参数索引
         if (idx >= 0)
         {
-            name = request.mid(idx + 5);
+            name = request.mid(idx + 5);//获取应用名称
             int end = name.indexOf(' ');
             if (end < 0) end = name.indexOf('\r');
             if (end < 0) end = name.indexOf('\n');
@@ -656,15 +664,15 @@ void NetworkWorker::handleHttpRequest(QTcpSocket *client, const QByteArray &data
             "fetchStatus();setInterval(fetchStatus,3000);"
             "</script></body></html>");
 
-        client->write(buildHttpResponse(html));
+        client->write(buildHttpResponse(html));//发送HTML响应
     }
     client->flush();
-    client->disconnectFromHost();
+    client->disconnectFromHost();//断开连接
 }
 
-QByteArray NetworkWorker::buildHttpResponse(const QString &body, const QString &contentType)
+QByteArray NetworkWorker::buildHttpResponse(const QString &body, const QString &contentType)//构建HTTP响应
 {
-    QByteArray content = body.toUtf8();
+    QByteArray content = body.toUtf8();//将响应体转换为字节数组
     QString header = QString(
         "HTTP/1.1 200 OK\r\n"
         "Content-Type: %1; charset=utf-8\r\n"
@@ -676,9 +684,9 @@ QByteArray NetworkWorker::buildHttpResponse(const QString &body, const QString &
 
 bool NetworkWorker::openCamera()
 {
-    QMutexLocker locker(&m_cameraMutex);
+    QMutexLocker locker(&m_cameraMutex);//加锁，确保线程安全
 
-    const char *devices[] = {"/dev/video1", "/dev/video0"};
+    const char *devices[] = {"/dev/video1", "/dev/video0"};//尝试打开摄像头设备
     for (const char *dev : devices)
     {
         m_cameraFd = open(dev, O_RDWR | O_NONBLOCK);
@@ -694,19 +702,20 @@ bool NetworkWorker::openCamera()
         return false;
 
     struct v4l2_capability cap;
-    if (ioctl(m_cameraFd, VIDIOC_QUERYCAP, &cap) < 0)
+    if (ioctl(m_cameraFd, VIDIOC_QUERYCAP, &cap) < 0)//查询摄像头设备能力
     {
-        qWarning() << "CAMERA: VIDIOC_QUERYCAP 失败";
+        qWarning() << "CAMERA: VIDIOC_QUERYCAP 失败";//查询摄像头设备能力失败
         close(m_cameraFd);
         m_cameraFd = -1;
         return false;
     }
 
-    struct v4l2_format fmt;
+    struct v4l2_format fmt;//设置视频格式
     memset(&fmt, 0, sizeof(fmt));
-    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;//设置视频格式为视频捕获
 
-    struct { int w; int h; } resolutions[] = {
+    struct { int w; int h; } resolutions[] = 
+    {
         {640, 480}, {320, 240}, {480, 272}
     };
 
@@ -715,7 +724,7 @@ bool NetworkWorker::openCamera()
     {
         fmt.fmt.pix.width = res.w;
         fmt.fmt.pix.height = res.h;
-        fmt.fmt.pix.field = V4L2_FIELD_ANY;
+        fmt.fmt.pix.field = V4L2_FIELD_ANY;//设置视频格式为任意场扫描
 
         fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
         if (ioctl(m_cameraFd, VIDIOC_S_FMT, &fmt) == 0)
@@ -747,13 +756,13 @@ bool NetworkWorker::openCamera()
     m_streamWidth = fmt.fmt.pix.width;
     m_streamHeight = fmt.fmt.pix.height;
 
-    struct v4l2_requestbuffers req;
-    memset(&req, 0, sizeof(req));
-    req.count = 4;
-    req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    req.memory = V4L2_MEMORY_MMAP;
+    struct v4l2_requestbuffers req;//请求缓冲区
+    memset(&req, 0, sizeof(req));//清零结构体
+    req.count = 4;//请求4个缓冲区
+    req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;//设置缓冲区类型为视频捕获
+    req.memory = V4L2_MEMORY_MMAP;//设置缓冲区内存类型为内存映射
 
-    if (ioctl(m_cameraFd, VIDIOC_REQBUFS, &req) < 0)
+    if (ioctl(m_cameraFd, VIDIOC_REQBUFS, &req) < 0)//请求缓冲区
     {
         qWarning() << "CAMERA: VIDIOC_REQBUFS 失败";
         close(m_cameraFd);
@@ -764,15 +773,15 @@ bool NetworkWorker::openCamera()
     m_cameraBufCount = req.count;
     m_cameraBuffers = new V4L2Buffer[m_cameraBufCount];
 
-    for (int i = 0; i < m_cameraBufCount; i++)
+    for (int i = 0; i < m_cameraBufCount; i++)//遍历缓冲区
     {
-        struct v4l2_buffer buf;
-        memset(&buf, 0, sizeof(buf));
-        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
+        struct v4l2_buffer buf;//查询缓冲区
+        memset(&buf, 0, sizeof(buf));//清零结构体
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;//设置缓冲区类型为视频捕获
+        buf.memory = V4L2_MEMORY_MMAP;//设置缓冲区内存类型为内存映射
         buf.index = i;
 
-        if (ioctl(m_cameraFd, VIDIOC_QUERYBUF, &buf) < 0)
+        if (ioctl(m_cameraFd, VIDIOC_QUERYBUF, &buf) < 0)//查询缓冲区
         {
             qWarning() << "CAMERA: VIDIOC_QUERYBUF 失败";
             close(m_cameraFd);
@@ -780,11 +789,11 @@ bool NetworkWorker::openCamera()
             return false;
         }
 
-        m_cameraBuffers[i].length = buf.length;
+        m_cameraBuffers[i].length = buf.length;//保存缓冲区长度
         m_cameraBuffers[i].start = mmap(nullptr, buf.length,
-            PROT_READ | PROT_WRITE, MAP_SHARED, m_cameraFd, buf.m.offset);
+            PROT_READ | PROT_WRITE, MAP_SHARED, m_cameraFd, buf.m.offset);//映射缓冲区到用户空间
 
-        if (m_cameraBuffers[i].start == MAP_FAILED)
+        if (m_cameraBuffers[i].start == MAP_FAILED)//映射缓冲区失败
         {
             qWarning() << "CAMERA: mmap 失败";
             close(m_cameraFd);
@@ -793,12 +802,12 @@ bool NetworkWorker::openCamera()
         }
     }
 
-    for (int i = 0; i < m_cameraBufCount; i++)
+    for (int i = 0; i < m_cameraBufCount; i++)//将缓冲区入队
     {
-        struct v4l2_buffer buf;
-        memset(&buf, 0, sizeof(buf));
-        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
+        struct v4l2_buffer buf;//查询缓冲区
+        memset(&buf, 0, sizeof(buf));//清零结构体
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;//设置缓冲区类型为视频捕获
+        buf.memory = V4L2_MEMORY_MMAP;//设置缓冲区内存类型为内存映射
         buf.index = i;
 
         if (ioctl(m_cameraFd, VIDIOC_QBUF, &buf) < 0)
@@ -810,8 +819,8 @@ bool NetworkWorker::openCamera()
         }
     }
 
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(m_cameraFd, VIDIOC_STREAMON, &type) < 0)
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;//设置缓冲区类型为视频捕获
+    if (ioctl(m_cameraFd, VIDIOC_STREAMON, &type) < 0)//开启流模式
     {
         qWarning() << "CAMERA: VIDIOC_STREAMON 失败";
         close(m_cameraFd);
@@ -856,10 +865,10 @@ bool NetworkWorker::grabFrame(QByteArray &jpegData)
 
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;//设置缓冲区类型为视频捕获
+    buf.memory = V4L2_MEMORY_MMAP;//设置缓冲区内存类型为内存映射
 
-    if (ioctl(m_cameraFd, VIDIOC_DQBUF, &buf) < 0)
+    if (ioctl(m_cameraFd, VIDIOC_DQBUF, &buf) < 0)//从队列中获取缓冲区
     {
         if (errno == EAGAIN)
             return false;
@@ -867,7 +876,7 @@ bool NetworkWorker::grabFrame(QByteArray &jpegData)
         return false;
     }
 
-    QByteArray rawData((char *)m_cameraBuffers[buf.index].start, buf.bytesused);
+    QByteArray rawData((char *)m_cameraBuffers[buf.index].start, buf.bytesused);//将缓冲区数据转换为QByteArray
 
     if (m_pixelFormat == V4L2_PIX_FMT_MJPEG)
     {
@@ -911,12 +920,12 @@ bool NetworkWorker::grabFrame(QByteArray &jpegData)
         jpegData = buffer.data();
     }
 
-    ioctl(m_cameraFd, VIDIOC_QBUF, &buf);
+    ioctl(m_cameraFd, VIDIOC_QBUF, &buf);//将缓冲区入队
 
     return true;
 }
 
-void NetworkWorker::onStreamTimer()
+void NetworkWorker::onStreamTimer()//推流定时器回调
 {
     if (m_streamClients.isEmpty())
         return;
@@ -936,7 +945,7 @@ void NetworkWorker::onStreamTimer()
     frame.append(jpegData);
     frame.append("\r\n");
 
-    for (int i = m_streamClients.size() - 1; i >= 0; i--)
+    for (int i = m_streamClients.size() - 1; i >= 0; i--)//遍历所有推流客户端
     {
         QTcpSocket *client = m_streamClients[i];
         if (client->state() == QAbstractSocket::ConnectedState)
