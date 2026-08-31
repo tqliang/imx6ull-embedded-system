@@ -75,7 +75,7 @@ private:
     V4L2Buffer         *m_cameraBuffers;
     int                 m_cameraBufCount;
     QMutex              m_cameraMutex;
-    unsigned int        m_pixelFormat;
+    unsigned int        m_pixelFormat;// V4L2_PIX_FMT_MJPEG
     int                 m_streamWidth;
     int                 m_streamHeight;
     bool                m_streaming;

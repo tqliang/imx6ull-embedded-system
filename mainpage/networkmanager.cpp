@@ -163,7 +163,8 @@ QByteArray NetworkWorker::encodeRemainingLength(int length)
         if (length > 0)
             byte |= 0x80;//设置最高位为1，表示还有更多字节
         encoded.append((char)byte);//将字节添加到编码数组中
-    } while (length > 0);
+    } 
+    while (length > 0);
     return encoded;
 }
 
@@ -790,8 +791,7 @@ bool NetworkWorker::openCamera()
         }
 
         m_cameraBuffers[i].length = buf.length;//保存缓冲区长度
-        m_cameraBuffers[i].start = mmap(nullptr, buf.length,
-            PROT_READ | PROT_WRITE, MAP_SHARED, m_cameraFd, buf.m.offset);//映射缓冲区到用户空间
+        m_cameraBuffers[i].start = mmap(nullptr, buf.length,PROT_READ | PROT_WRITE, MAP_SHARED, m_cameraFd, buf.m.offset);//映射缓冲区到用户空间
 
         if (m_cameraBuffers[i].start == MAP_FAILED)//映射缓冲区失败
         {
@@ -856,7 +856,7 @@ void NetworkWorker::closeCamera()
     }
 }
 
-bool NetworkWorker::grabFrame(QByteArray &jpegData)
+bool NetworkWorker::grabFrame(QByteArray &jpegData)//获取一帧视频数据
 {
     QMutexLocker locker(&m_cameraMutex);
 
