@@ -40,11 +40,8 @@ NetworkManager::NetworkManager(QObject *parent)
 void NetworkManager::start()
 {
     SettingsManager *s = SettingsManager::instance();
-    QMetaObject::invokeMethod(m_worker, "connectToMqtt",
-        Qt::QueuedConnection, Q_ARG(QString, s->mqttHost()),
-        Q_ARG(int, s->mqttPort()));//使用队列连接方式调用工作线程的connectToMqtt函数，传递MQTT主机和端口参数
-    QMetaObject::invokeMethod(m_worker, "startHttpServer",
-        Qt::QueuedConnection, Q_ARG(int, httpPort()));//使用队列连接方式调用工作线程的startHttpServer函数，传递HTTP端口参数
+    QMetaObject::invokeMethod(m_worker, "connectToMqtt",Qt::QueuedConnection, Q_ARG(QString, s->mqttHost()),Q_ARG(int, s->mqttPort()));//使用队列连接方式调用工作线程的connectToMqtt函数，传递MQTT主机和端口参数
+    QMetaObject::invokeMethod(m_worker, "startHttpServer",Qt::QueuedConnection, Q_ARG(int, httpPort()));//使用队列连接方式调用工作线程的startHttpServer函数，传递HTTP端口参数
 }
 
 void NetworkManager::stop()
@@ -313,8 +310,7 @@ void NetworkWorker::publishStatus(const QJsonObject &status)//发布状态消息
 void NetworkWorker::startHttpServer(int port)
 {
     m_httpServer = new QTcpServer(this);//创建HTTP服务器
-    connect(m_httpServer, &QTcpServer::newConnection,
-            this, &NetworkWorker::onNewHttpConnection);//连接新连接信号到槽函数
+    connect(m_httpServer, &QTcpServer::newConnection,this, &NetworkWorker::onNewHttpConnection);//连接新连接信号到槽函数
 
     if (m_httpServer->listen(QHostAddress::Any, port)) //监听HTTP服务器
     {
